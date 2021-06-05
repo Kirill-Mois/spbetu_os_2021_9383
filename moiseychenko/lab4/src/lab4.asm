@@ -1,308 +1,345 @@
-AStack	SEGMENT STACK
-	DB 256 DUP(?)
-AStack ENDS
+ASSUME CS:CODE, DS:DATA, SS:MY_STACK
 
-DATA	SEGMENT
+MY_STACK SEGMENT STACK
+	DW 64 DUP(?)
+MY_STACK ENDS
 
-	flag DB 0
-	interrupt_was_loaded_string DB 'Interrupt was loaded', 0DH, 0AH,'$'
-	interrupt_was_unloaded_string DB 'Interrupt was unloaded', 0DH, 0AH,'$'
-	interrupt_not_loaded_string DB 'Interrupt has not been loaded', 0DH, 0AH,'$'
-	interrupt_already_loaded_string DB 'Interrupt has already been loaded', 0DH, 0AH,'$'
-
-DATA	ENDS
-
-CODE	SEGMENT
-	ASSUME CS:CODE, DS:DATA, SS:AStack
+CODE SEGMENT
 
 
-MY_INTERRUPT	PROC far
-	jmp start_interrupt
+INTERRUPT PROC far
+	jmp START_FUNCTION
 	
-	ID DW 0FFFFh
-	PSP DW ?
-	
-	KEEP_IP DW 0
+	PSP_ADDRESS_0 DW 0
+	PSP_ADDRESS_1 DW 0
 	KEEP_CS DW 0
-	KEEP_SS DW 0
+	KEEP_IP DW 0
 	KEEP_SP DW 0
+	KEEP_SS DW 0
 	KEEP_AX DW 0
+	INTERRUPT_SET DW 0FEDCh
+	INT_COUNT DB 'Interrupts call count: 0000  $'
+	BStack DW 64 DUP(?)
 
-	INT_COUNTER DB 'Number of iterrups: 0000$'
-	
-	INT_STACK DW 128 DUP (?)
-END_INT_STACK:
-	
-start_interrupt:
-	mov KEEP_SS, SS
-	mov KEEP_SP, SP
-	mov KEEP_AX, AX
-	
-	mov AX, CS
-	mov SS, AX
-	mov SP, OFFSET END_INT_STACK
-	
-	push BX
-	push CX
-	push DX
+START_FUNCTION:
+	mov KEEP_SP, sp
+	mov KEEP_AX, ax
+	mov KEEP_SS, ss
+	mov sp, offset START_FUNCTION
+	mov ax, seg BStack
+	mov ss, ax
 
-	; получение курсора
-	
-	mov AH, 3h
-	mov BH, 0h
-	int 10h
-	push DX
-	
-	; установка курсора
-	
-	mov AH, 2h
-	mov BH, 0h
-	mov DH, 2h
-    mov DL, 5h
-	int 10h
-	
-    push BP
-	push SI
-	push CX
-	push DS
+	push ax
+	push bx
+	push cx
+	push dx
 
-    mov AX, seg INT_COUNTER
-    mov DS, AX
-    mov SI, offset INT_COUNTER
-    add SI, 20
-    mov CX, 4
-	
-incr:
-	mov BP, CX
-	mov AH, [SI+BP]
-	inc AH
-	mov [SI+BP], AH
-	cmp AH, 3Ah
-	jne good
-	mov AH, 30h
-	mov [SI+BP], AH
-	loop incr
-	
-good:
-    pop DS
-	pop CX
-	pop SI
-	
-	push ES
-	mov DX, SEG INT_COUNTER
-	mov ES, DX
-	mov BP, OFFSET INT_COUNTER
-	mov AH, 13h
-	mov AL, 0h
-	mov CX, 24
-	mov DX, 0h
+	mov ah, 03h
+	mov bh, 00h
 	int 10h
-	
-	pop ES
-	pop BP
-	
-	; возврат курсора
-	
-	mov AH, 02h
-	mov BH, 0h
-	pop DX
+	push dx
+	mov ah, 02h
+	mov bh, 00h
+	mov dx, 0220h 
 	int 10h
-	
-	pop DX
-	pop CX
-	pop BX
-	
-	mov AX, KEEP_SS
-	mov SS, AX
-	mov AX, KEEP_AX
-	mov SP, KEEP_SP
-	mov AL, 20h
-	out 20h, AL
-	
+
+	push si
+	push cx
+	push ds
+
+	mov ax, SEG INT_COUNT
+	mov ds, ax
+	mov si, offset INT_COUNT
+	add si, 1Ah
+	mov ah,[si]
+	inc ah
+	mov [si], ah
+	cmp ah, 3Ah
+	jne END_CLC
+	mov ah, 30h
+	mov [si], ah
+
+	mov bh, [si - 1]
+	inc bh
+	mov [si - 1], bh
+	cmp bh, 3Ah
+	jne END_CLC
+	mov bh, 30h
+	mov [si - 1], bh
+
+	mov ch, [si - 2]
+	inc ch
+	mov [si - 2], ch
+	cmp ch, 3Ah
+	jne END_CLC
+	mov ch, 30h
+	mov [si - 2], ch
+
+	mov dh, [si - 3]
+	inc dh
+	mov [si - 3], dh
+	cmp dh, 3Ah
+	jne END_CLC
+	mov dh, 30h
+	mov [si - 3],dh
+
+END_CLC:
+	pop ds
+	pop cx
+	pop si
+
+	push es
+	push bp
+
+	mov ax, SEG INT_COUNT
+	mov es, ax
+	mov ax, offset INT_COUNT
+	mov bp, ax
+	mov ah, 13h
+	mov al, 00h
+	mov cx, 1Dh
+	mov bh, 0
+	int 10h
+
+	pop bp
+	pop es
+
+	pop dx
+	mov ah, 02h
+	mov bh, 0h
+	int 10h
+
+	pop dx
+	pop cx
+	pop bx
+	pop ax
+
+	mov ss, KEEP_SS
+	mov ax, KEEP_AX
+	mov sp, KEEP_SP
+
 	iret
-end_my_interrupt:
-MY_INTERRUPT	endp
+
+INTERRUPT endp
 
 
-
-LOAD	PROC near
-	
-	push    AX
-	push    CX
-	push    DX
-
-	mov     AH, 35h
-	mov     AL, 1Ch
-	int     21h
-	mov     KEEP_IP, BX
-	mov     KEEP_CS, ES
-	
-    push    DS
-    mov     DX, OFFSET MY_INTERRUPT
-    mov     AX, SEG MY_INTERRUPT
-    mov     DS, AX
-    mov     AH, 25h
-    mov     AL, 1Ch
-    int     21h
-    pop     DS
-	
-    mov     DX, OFFSET END_INT_STACK
-    mov     CL, 4
-    shr     DX, CL
-    inc     DX
-    mov     AX, CS
-    sub     AX, PSP
-    add     DX, AX
-    xor     AX, AX
-    mov     AH, 31h
-    int     21h
-    pop     DX
-    pop     CX
-    pop     AX
-    ret
-        
-LOAD	endp
-	
+MEMORY_AREA PROC
+MEMORY_AREA endp
 
 
-UNLOAD	PROC near
+IS_INTERRUPT_SET PROC near
+	push bx
+	push dx
+	push es
 
-        push    AX
-        push    DX
-        push    SI
-        push    ES
-	
-        cli
-        push    DS
-        mov     AH, 35h
-        mov     AL, 1Ch
-        int     21h
-        mov     SI, OFFSET KEEP_CS
-        sub     SI, OFFSET MY_INTERRUPT
-        mov     DX, ES:[BX+SI+2]
-        mov     AX, ES:[BX+SI]
-        mov     DS, AX
-        mov     AH, 25h
-        mov     AL, 1Ch
-        int     21h
-        pop     DS
-        mov     AX, ES:[BX+SI-2]
-        mov     ES, AX
-        push    ES
-        mov     AX, ES:[2Ch]
-        mov     ES, AX
-        mov     AH, 49h
-        int     21h
-        pop     ES
-        mov     AH, 49h
-        int     21h
-        sti
-        pop     ES
-        pop     SI
-        pop     DX
-        pop     AX
-        ret
-        
-UNLOAD	endp
+	mov ah, 35h
+	mov al, 1Ch
+	int 21h
+
+	mov dx, es:[bx + 17]
+	cmp dx, 0FEDCh
+	je IS_INTER_SET
+	mov al, 00h
+	jmp POP_REG
+
+IS_INTER_SET:
+	mov al, 01h
+	jmp POP_REG
+
+POP_REG:
+	pop es
+	pop dx
+	pop bx
+
+	ret
+
+IS_INTERRUPT_SET endp
 
 
+IS_COMMAND_PROMT PROC near
+	push es
 
-LOAD_FLAG	PROC near
+	mov ax, PSP_ADDRESS_0
+	mov es, ax
 
-        push    AX
-        mov     AL, ES:[82h]
-        cmp     AL, '/'
-        jne     end_load_flag
-        mov     AL, ES:[83h]
-        cmp     AL, 'u'
-        jne     end_load_flag
-        mov     AL, ES:[84h]
-        cmp     AL, 'n'
-        jne     end_load_flag
-        mov     flag, 1h
-end_load_flag: 
-	pop     AX
+	mov bx, 0082h
 
-LOAD_FLAG	endp
+	mov al, es:[bx]
+	inc bx
+	cmp al, '/'
+	jne NULL_CMD
 
+	mov al, es:[bx]
+	inc bx
+	cmp al, 'U'
+	jne NULL_CMD
 
+	mov al, es:[bx]
+	inc bx
+	cmp al, 'N'
+	jne NULL_CMD
 
-IS_LOAD	PROC near
+	mov al, 0001h
+NULL_CMD:
+	pop es
 
-        push    AX
-        push    DX
-        push    SI
-        mov     flag, 1h
-        mov     AH, 35h
-        mov     AL, 1Ch
-        int     21h
-        mov     SI, OFFSET ID
-        sub     SI, OFFSET MY_INTERRUPT
-        mov     DX, ES:[BX+SI]
-        cmp     DX, 0FFFFh
-        je      loading
-        
-        mov     flag, 0
-loading:     
-	    pop     SI
-        pop     DX
-        pop     AX
-        ret
-        
-IS_LOAD	endp
+	ret
+IS_COMMAND_PROMT endp
 
 
+LOAD_INTERRUPT PROC near
+	push ax
+	push bx
+	push dx
+	push es
 
-PRINT_STR	PROC near
-        push    AX
-        mov     AH, 09h
-        int     21h
-        pop     AX
-        ret
-PRINT_STR	endp
+	mov ah, 35h
+	mov al, 1Ch
+	int 21h
+	mov KEEP_IP, bx
+	mov KEEP_CS, es
+
+	push ds
+    	mov dx, offset INTERRUPT
+   	mov ax, seg INTERRUPT
+    	mov ds, ax
+    	mov ah, 25h
+   	mov al, 1Ch
+    	int 21h
+	pop ds
+
+	mov dx, offset INTERRUPT_LOADING
+	call PRINT_STRING
+
+	pop es
+	pop dx
+	pop bx
+	pop ax
+
+	ret
+LOAD_INTERRUPT endp
 
 
+UNLOAD_INTERRUPT PROC near
+	push ax
+	push bx
+	push dx
+	push es
 
-MAIN	PROC far
+	mov ah, 35h
+	mov al, 1Ch
+	int 21h
 
-        mov     AX, DATA
-        mov     DS, AX
-        mov     PSP, ES
-        mov     flag, 0
-        call    LOAD_FLAG
-        cmp     flag, 1
-        je      un
-        
-	; loading
-	
-        call    IS_LOAD
-        cmp     flag, 0
-        je      notld
-        mov     DX, OFFSET interrupt_already_loaded_string
-        call    PRINT_STR
-        jmp     fin
-       
-notld:  mov     DX, OFFSET interrupt_was_loaded_string
-        call    PRINT_STR
-        call    LOAD
-        jmp     fin
-        
-	; unloading
+	cli
+	push ds
+	mov dx, es:[bx + 9]
+	mov ax, es:[bx + 7]
+	mov ds, ax
+	mov ah, 25h
+	mov al, 1Ch
+	int 21h
 
-un:     call    IS_LOAD
-        cmp     flag, 0
-        jne     alrld
-        mov     DX, OFFSET interrupt_not_loaded_string
-        call    PRINT_STR
-        jmp     fin
-        
-alrld:  call    UNLOAD
-        mov     DX, OFFSET interrupt_was_unloaded_string
-        call    PRINT_STR
-        
-fin:    mov     AX, 4Ch    ; завершение
-        int     21h
-        
-MAIN	endp
-CODE	ENDS
-	END	MAIN
+	pop ds
+	sti
+
+	mov dx, offset INTERRUPT_RESTORED
+	call PRINT_STRING
+
+	push es
+	mov cx, es:[bx + 3]
+	mov es, cx
+	mov ah, 49h
+	int 21h
+	pop es
+
+	mov cx, es:[bx + 5]
+	mov es, cx
+	int 21h
+
+	pop es
+	pop dx
+	pop bx
+	pop ax
+
+	ret
+
+UNLOAD_INTERRUPT endp
+
+
+PRINT_STRING PROC near
+	push ax
+   	mov ah, 09h
+   	int 21h
+	pop ax
+   	ret
+PRINT_STRING endp
+
+
+MAIN PROC FAR
+	mov bx, 02Ch
+	mov ax, [bx]
+	mov PSP_address_1, ax
+	mov PSP_address_0, ds
+	sub ax, ax
+	sub bx, bx
+
+	mov ax, DATA
+	mov ds, ax
+
+	call IS_COMMAND_PROMT
+	cmp al, 01h
+	je START_UNLOAD
+
+	call IS_INTERRUPT_SET
+	cmp al, 01h
+	jne INTERRUPT_NOT_LOADED
+
+	mov dx, offset INTERRUPT_LOADED
+	call PRINT_STRING
+	jmp EXIT_PR
+
+	mov ah, 4Ch
+	int 21h
+
+INTERRUPT_NOT_LOADED:
+	call LOAD_INTERRUPT
+
+	mov dx, offset MEMORY_AREA
+	mov cl, 04h
+	shr dx, cl
+	add dx, 1Bh
+
+	mov ax, 3100h 
+	int 21h
+
+START_UNLOAD:
+	call IS_INTERRUPT_SET
+	cmp al, 00h
+	je INTERRUPT_NOT_SET
+	call UNLOAD_INTERRUPT
+	jmp EXIT_PR
+
+INTERRUPT_NOT_SET:
+	mov dx, offset INT_NOT_SET
+	call PRINT_STRING
+    	jmp EXIT_PR
+
+EXIT_PR:
+	mov ah, 4Ch
+	int 21h
+
+MAIN endp
+
+
+CODE ENDS
+
+
+DATA SEGMENT
+	INT_NOT_SET DB 'Interruption did not load.', 0dh, 0ah, '$'
+	INTERRUPT_RESTORED DB 'Interruption was restored.', 0dh, 0ah, '$'
+	INTERRUPT_LOADED DB 'Interruption is loaded.', 0dh, 0ah, '$'
+	INTERRUPT_LOADING DB 'Interruption is loading.', 0dh, 0ah, '$'
+DATA ENDS
+
+
+END MAIN 
